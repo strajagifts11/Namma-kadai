@@ -4,7 +4,7 @@
    Never put a service_role key in this file.
 */
 const SUPABASE_URL = "https://bqrsavbnewekhzzqgkae.supabase.co";
-const SUPABASE_ANON_KEY = "PASTE_YOUR_EXISTING_PUBLIC_ANON_KEY_HERE";
+const SUPABASE_ANON_KEY = "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
 
 const $ = id => document.getElementById(id);
 const ready = !SUPABASE_URL.startsWith("PASTE_") &&
