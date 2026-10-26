@@ -1,6 +1,6 @@
 // Public storefront. Browser-safe Supabase anon/publishable key only; never use service_role here.
-const SUPABASE_URL="PASTE_YOUR_SUPABASE_PROJECT_URL";
-const SUPABASE_ANON_KEY="PASTE_YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY";
+const SUPABASE_URL="https://bqrsavbnewekhzzqgkae.supabase.co";
+const SUPABASE_ANON_KEY="sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
 const WHATSAPP_NUMBER="918489880411";
 const demo=[{id:"demo1",name:"Personalised Photo Frame",category:"Personalized gifts",price:499,description:"A keepsake for favourite memories",emoji:"🖼️"},{id:"demo2",name:"Celebration Gift Hamper",category:"Gift hampers",price:799,description:"A thoughtful bundle",emoji:"🎀"},{id:"demo3",name:"Cuddly Teddy Bear",category:"Soft toys",price:399,description:"A soft little hug",emoji:"🧸"},{id:"demo4",name:"Classic Everyday Watch",category:"Watches & accessories",price:999,description:"Everyday style",emoji:"⌚"},{id:"demo5",name:"Return Gift Set",category:"Return gifts",price:299,description:"A thank-you for guests",emoji:"🎉"}];
 const cats=["All gifts","Personalized gifts","Gift hampers","Soft toys","Watches & accessories","Return gifts"];let db=null,products=[],cart=[],category="All gifts";const $=id=>document.getElementById(id);const ready=!SUPABASE_URL.startsWith("PASTE_")&&!SUPABASE_ANON_KEY.startsWith("PASTE_");if(ready)db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
