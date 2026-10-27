@@ -422,5 +422,205 @@ window.savePaymentStatus = async id => {
 };
 
 if (db) db.auth.onAuthStateChange(() => setTimeout(session, 0));
-session();
-                                       
+session(
+   
+);
+  
+/* ST Raja Gifts — Coupon Admin Integration
+   Requires the coupon form IDs already present in admin.html.
+   Uses the existing authenticated Supabase client: db.
+*/
+
+let coupons = [];
+
+function couponMsg(message) {
+  if (typeof msg === "function") msg(message);
+  else alert(message);
+}
+
+function couponDiscountLabel(c) {
+  const value = Number(c.discount_value || 0);
+  return c.discount_type === "percentage"
+    ? `${value}%`
+    : `₹${value}`;
+}
+
+function clearCouponForm() {
+  $("coupon-id").value = "";
+  $("coupon-form").reset();
+  $("coupon-type").value = "flat";
+  $("coupon-minimum").value = "0";
+  $("coupon-active").checked = true;
+}
+
+async function loadCoupons() {
+  if (!db || !$("coupon-rows")) return;
+
+  const { data, error } = await db
+    .from("coupons")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    couponMsg(
+      "Coupons load aagala. Check Supabase admin policy."
+    );
+    console.error("Coupon load error:", error);
+    return;
+  }
+
+  coupons = data || [];
+
+  $("coupon-rows").innerHTML = coupons.map(c => {
+    const expiry = c.expires_at || "No expiry";
+    const active = !!c.active;
+
+    return `
+      <tr>
+        <td>
+          <b>${esc(c.code)}</b><br>
+          <small>${esc(c.discount_type)}</small>
+        </td>
+        <td>${esc(couponDiscountLabel(c))}</td>
+        <td>₹${cash(c.minimum_order)}</td>
+        <td>${c.maximum_discount == null
+          ? "No limit"
+          : "₹" + cash(c.maximum_discount)}</td>
+        <td>${esc(expiry)}</td>
+        <td>${active ? "Active" : "Inactive"}</td>
+        <td>
+          <button class="btn alt"
+            onclick="editCoupon(${Number(c.id)})">Edit</button>
+          <button class="btn alt"
+            onclick="toggleCoupon(${Number(c.id)},${!active})">
+            ${active ? "Disable" : "Enable"}
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join("") ||
+    "<tr><td colspan='7'>No coupons created yet.</td></tr>";
+}
+
+$("coupon-form")?.addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!db) {
+    couponMsg("Supabase connection unavailable.");
+    return;
+  }
+
+  const id = $("coupon-id").value;
+  const code = $("coupon-code").value.trim().toUpperCase();
+  const type = $("coupon-type").value;
+  const value = Number($("coupon-value").value);
+  const minimum = Number($("coupon-minimum").value || 0);
+  const maximumText = $("coupon-maximum").value.trim();
+  const expiry = $("coupon-expiry").value || null;
+
+  if (!/^[A-Z0-9_-]{3,30}$/.test(code)) {
+    couponMsg(
+      "Coupon code 3–30 characters: letters, numbers, _ or -."
+    );
+    return;
+  }
+
+  if (!["flat", "percentage"].includes(type)) {
+    couponMsg("Choose flat or percentage discount.");
+    return;
+  }
+
+  if (!Number.isFinite(value) || value <= 0 ||
+      (type === "percentage" && value > 100)) {
+    couponMsg("Enter a valid discount value. Percentage max is 100.");
+    return;
+  }
+
+  if (!Number.isFinite(minimum) || minimum < 0) {
+    couponMsg("Minimum order cannot be negative.");
+    return;
+  }
+
+  const maximum = maximumText === ""
+    ? null
+    : Number(maximumText);
+
+  if (maximum !== null &&
+      (!Number.isFinite(maximum) || maximum <= 0)) {
+    couponMsg("Maximum discount must be greater than zero.");
+    return;
+  }
+
+  const payload = {
+    code,
+    discount_type: type,
+    discount_value: value,
+    minimum_order: minimum,
+    maximum_discount: maximum,
+    expires_at: expiry,
+    active: $("coupon-active").checked
+  };
+
+  const result = id
+    ? await db.from("coupons").update(payload).eq("id", id)
+    : await db.from("coupons").insert(payload);
+
+  if (result.error) {
+    couponMsg(
+      result.error.code === "23505"
+        ? "Indha coupon code already exists."
+        : "Coupon save failed. Check admin policy and field values."
+    );
+    console.error("Coupon save error:", result.error);
+    return;
+  }
+
+  clearCouponForm();
+  couponMsg("Coupon saved successfully.");
+  await loadCoupons();
+});
+
+window.editCoupon = id => {
+  const c = coupons.find(x => Number(x.id) === Number(id));
+  if (!c) return;
+
+  $("coupon-id").value = c.id;
+  $("coupon-code").value = c.code;
+  $("coupon-type").value = c.discount_type;
+  $("coupon-value").value = c.discount_value;
+  $("coupon-minimum").value = c.minimum_order ?? 0;
+  $("coupon-maximum").value = c.maximum_discount ?? "";
+  $("coupon-expiry").value = c.expires_at || "";
+  $("coupon-active").checked = !!c.active;
+
+  $("coupon-form").scrollIntoView({
+    behavior: "smooth",
+    block: "start"
+  });
+};
+
+window.toggleCoupon = async (id, active) => {
+  if (!db) return;
+
+  const { error } = await db
+    .from("coupons")
+    .update({ active })
+    .eq("id", id);
+
+  if (error) {
+    couponMsg("Coupon status update failed.");
+    console.error("Coupon toggle error:", error);
+    return;
+  }
+
+  couponMsg(active ? "Coupon enabled." : "Coupon disabled.");
+  await loadCoupons();
+};
+
+$("coupon-clear")?.addEventListener("click", e => {
+  e.preventDefault();
+  clearCouponForm();
+});
+
+/* Call this after a successful admin login/session check. */
+window.loadCoupons = loadCoupons;
+
