@@ -1,22 +1,24 @@
 
 /* ST Raja Gifts - Storefront + UPI checkout
-   Keep the existing Supabase URL and public anon/publishable key.
+   Updated: MRP data included in product loading.
+   Preserves cart, checkout, orders, UPI QR and WhatsApp flow.
+   Use the existing public Supabase anon/publishable key only.
    NEVER use a service_role key in browser code.
 */
 
 const SUPABASE_URL = "https://bqrsavbnewekhzzqgkae.supabase.co";
 
-// IMPORTANT: Replace this line with your EXISTING public anon/publishable key.
+// Keep your EXISTING working public anon/publishable key here.
 const SUPABASE_ANON_KEY = "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
 
 const DEFAULT_WHATSAPP_NUMBER = "918489880411";
 
 const demo = [
-  {id:"demo1",name:"Personalised Photo Frame",category:"Personalized gifts",price:499,description:"A keepsake for favourite memories",emoji:"🖼️"},
-  {id:"demo2",name:"Celebration Gift Hamper",category:"Gift hampers",price:799,description:"A thoughtful bundle",emoji:"🎀"},
-  {id:"demo3",name:"Cuddly Teddy Bear",category:"Soft toys",price:399,description:"A soft little hug",emoji:"🧸"},
-  {id:"demo4",name:"Classic Everyday Watch",category:"Watches & accessories",price:999,description:"Everyday style",emoji:"⌚"},
-  {id:"demo5",name:"Return Gift Set",category:"Return gifts",price:299,description:"A thank-you for guests",emoji:"🎉"}
+  {id:"demo1",name:"Personalised Photo Frame",category:"Personalized gifts",price:499,mrp:null,description:"A keepsake for favourite memories",emoji:"🖼️"},
+  {id:"demo2",name:"Celebration Gift Hamper",category:"Gift hampers",price:799,mrp:null,description:"A thoughtful bundle",emoji:"🎀"},
+  {id:"demo3",name:"Cuddly Teddy Bear",category:"Soft toys",price:399,mrp:null,description:"A soft little hug",emoji:"🧸"},
+  {id:"demo4",name:"Classic Everyday Watch",category:"Watches & accessories",price:999,mrp:null,description:"Everyday style",emoji:"⌚"},
+  {id:"demo5",name:"Return Gift Set",category:"Return gifts",price:299,mrp:null,description:"A thank-you for guests",emoji:"🎉"}
 ];
 
 const cats = [
@@ -32,6 +34,7 @@ let db = null;
 let products = [];
 let cart = [];
 let category = "All gifts";
+
 let paymentSettings = {
   upi_id: "",
   whatsapp_number: DEFAULT_WHATSAPP_NUMBER,
@@ -43,7 +46,8 @@ const $ = id => document.getElementById(id);
 const ready =
   !SUPABASE_URL.startsWith("PASTE_") &&
   !SUPABASE_ANON_KEY.startsWith("PASTE_") &&
-  SUPABASE_ANON_KEY !== "hide";
+  SUPABASE_ANON_KEY !== "hide" &&
+  SUPABASE_ANON_KEY !== "YOUR_EXISTING_PUBLIC_ANON_KEY";
 
 if (ready && window.supabase) {
   db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -60,7 +64,16 @@ function esc(s) {
 }
 
 function cash(n) {
-  return Number(n || 0).toLocaleString("en-IN");
+  return Number(n || 0).toLocaleString("en-IN", {
+    maximumFractionDigits: 2
+  });
+}
+
+function discountPercent(price, mrp) {
+  price = Number(price);
+  mrp = Number(mrp);
+  if (!mrp || mrp <= price || price < 0) return 0;
+  return Math.round(((mrp - price) / mrp) * 100);
 }
 
 function showNotice(message) {
@@ -70,6 +83,7 @@ function showNotice(message) {
   notice.classList.add("show");
 }
 
+/* PAYMENT SETTINGS */
 async function loadPaymentSettings() {
   if (!db) return;
 
@@ -99,17 +113,20 @@ async function loadPaymentSettings() {
   }
 }
 
+/* PRODUCTS
+   Added mrp to the Supabase SELECT query. */
 async function load() {
   if (db) {
     const r = await db
       .from("products")
-      .select("id,name,category,price,description,image_url,active")
+      .select("id,name,category,price,mrp,description,image_url,active")
       .eq("active", true)
-      .order("created_at", {ascending:false});
+      .order("created_at", { ascending: false });
 
     if (!r.error && r.data) {
       products = r.data;
     } else {
+      console.error("Product loading error:", r.error);
       products = demo;
       showNotice("Live catalogue unavailable; demo products shown.");
     }
@@ -123,6 +140,8 @@ async function load() {
 }
 
 function renderCats() {
+  if (!$("categories")) return;
+
   $("categories").innerHTML = cats.map(c =>
     `<button class="chip ${c === category ? "active" : ""}"
       onclick="setCat('${c.replace(/'/g, "\\'")}')">${esc(c)}</button>`
@@ -136,11 +155,14 @@ function setCat(c) {
 }
 
 function renderProducts() {
+  if (!$("products")) return;
+
   const search = ($("gift-search")?.value || "").trim().toLowerCase();
 
   const list = products.filter(p => {
     const categoryMatch =
       category === "All gifts" || p.category === category;
+
     const searchMatch =
       !search ||
       String(p.name || "").toLowerCase().includes(search) ||
@@ -151,41 +173,54 @@ function renderProducts() {
   });
 
   $("products").innerHTML = list.length
-    ? list.map(p => `
-      <article class="card">
-        ${p.image_url
-          ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}">`
-          : `<div class="emoji">${esc(p.emoji || "🎁")}</div>`}
-        <div class="info">
-          <h3>${esc(p.name)}</h3>
-          <div class="price">₹${cash(p.price)}</div>
-          <p>${esc(p.description || p.category)}</p>
-          <div class="product-actions">
-            <button class="btn" onclick="add('${esc(p.id)}')">
-              Add to basket
-            </button>
-          </div>
-        </div>
-      </article>
-    `).join("")
+    ? list.map(p => {
+        const off = discountPercent(p.price, p.mrp);
+
+        return `
+          <article class="card">
+            ${p.image_url
+              ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}">`
+              : `<div class="emoji">${esc(p.emoji || "🎁")}</div>`}
+            <div class="info">
+              <h3>${esc(p.name)}</h3>
+              <div class="price">₹${cash(p.price)}</div>
+              ${Number(p.mrp) > Number(p.price) ? `
+                <div class="mrp-line">
+                  <del>₹${cash(p.mrp)}</del>
+                  <span>${off}% OFF</span>
+                </div>
+              ` : ""}
+              <p>${esc(p.description || p.category)}</p>
+              <div class="product-actions">
+                <button class="btn" onclick="add('${esc(p.id)}')">
+                  Add to basket
+                </button>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join("")
     : `<div class="empty-search">No gifts found. Try another search or category.</div>`;
 
   const count = $("result-count");
   if (count) {
-    count.textContent = `${list.length} gift${list.length === 1 ? "" : "s"} found`;
+    count.textContent =
+      `${list.length} gift${list.length === 1 ? "" : "s"} found`;
   }
 }
 
+/* CART */
 function add(id) {
   const p = products.find(x => String(x.id) === String(id));
   if (!p) return;
 
   const item = cart.find(x => String(x.id) === String(id));
+
   if (item) item.qty++;
-  else cart.push({...p, qty:1});
+  else cart.push({ ...p, qty: 1 });
 
   renderCart();
-  $("checkout").scrollIntoView({behavior:"smooth"});
+  $("checkout")?.scrollIntoView({ behavior: "smooth" });
 }
 
 function qty(id, d) {
@@ -202,19 +237,21 @@ function qty(id, d) {
 }
 
 function renderCart() {
+  if (!$("cart-items") || !$("cart-total")) return;
+
   $("cart-items").innerHTML = cart.length
     ? cart.map(p => `
-      <div class="line">
-        <span>
-          ${esc(p.name)} × ${p.qty}<br>
-          <button type="button" class="chip"
-            onclick="qty('${esc(p.id)}',-1)">−</button>
-          <button type="button" class="chip"
-            onclick="qty('${esc(p.id)}',1)">+</button>
-        </span>
-        <b>₹${cash(Number(p.price) * p.qty)}</b>
-      </div>
-    `).join("")
+        <div class="line">
+          <span>
+            ${esc(p.name)} × ${p.qty}<br>
+            <button type="button" class="chip"
+              onclick="qty('${esc(p.id)}',-1)">−</button>
+            <button type="button" class="chip"
+              onclick="qty('${esc(p.id)}',1)">+</button>
+          </span>
+          <b>₹${cash(Number(p.price) * p.qty)}</b>
+        </div>
+      `).join("")
     : "Basket empty — add a gift above.";
 
   $("cart-total").textContent = cash(
@@ -222,8 +259,11 @@ function renderCart() {
   );
 }
 
+/* UPI PAYMENT + WHATSAPP ORDER DETAILS */
 function buildPaymentPanel(orderId, total, payload, items, lines) {
   const out = $("order-result");
+  if (!out) return;
+
   const upi = paymentSettings.upi_id.trim();
   const qr = paymentSettings.qr_image_url;
   const wa = paymentSettings.whatsapp_number || DEFAULT_WHATSAPP_NUMBER;
@@ -272,8 +312,9 @@ function buildPaymentPanel(orderId, total, payload, items, lines) {
 
       ${upi ? `
         <p>UPI ID: <b>${esc(upi)}</b></p>
-        <button type="button" class="btn btn-outline"
-          id="copy-upi">COPY UPI ID</button>
+        <button type="button" class="btn btn-outline" id="copy-upi">
+          COPY UPI ID
+        </button>
         <p style="margin-top:12px">
           <a class="btn btn-gold" href="${esc(upiLink)}">
             PAY ₹${cash(total)} USING UPI
@@ -309,10 +350,13 @@ function buildPaymentPanel(orderId, total, payload, items, lines) {
   }
 }
 
-$("order-form").addEventListener("submit", async e => {
+/* PLACE ORDER
+   Coupon discount has not been integrated yet. */
+$("order-form")?.addEventListener("submit", async e => {
   e.preventDefault();
 
   const out = $("order-result");
+  if (!out) return;
 
   if (!cart.length) {
     out.textContent = "Add a product to your basket first.";
@@ -347,13 +391,14 @@ $("order-form").addEventListener("submit", async e => {
   };
 
   const button = $("place-order");
-  button.disabled = true;
-  button.textContent = "SAVING ORDER…";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "SAVING ORDER…";
+  }
   out.textContent = "";
 
   try {
-    const r = await db
-      .from("orders")
+    const r = await db.from("orders")
       .insert(payload)
       .select("id")
       .single();
@@ -384,13 +429,16 @@ $("order-form").addEventListener("submit", async e => {
     out.textContent =
       "Something went wrong. Please try again or contact the shop.";
   } finally {
-    button.disabled = false;
-    button.textContent = "PLACE ORDER REQUEST";
+    if (button) {
+      button.disabled = false;
+      button.textContent = "PLACE ORDER REQUEST";
+    }
   }
 });
 
 $("gift-search")?.addEventListener("input", renderProducts);
 
+/* INITIALISE */
 async function initStorefront() {
   await Promise.all([
     load(),
@@ -400,3 +448,4 @@ async function initStorefront() {
 }
 
 initStorefront();
+       
