@@ -1,15 +1,20 @@
 
 /* ST Raja Gifts Admin
-   Uses the existing Supabase browser client.
-   Never put a service_role key in this file.
+   Existing products, orders and payment settings preserved.
+   Use ONLY your existing public Supabase anon/publishable key.
+   NEVER use a service_role key in browser code.
 */
 const SUPABASE_URL = "https://bqrsavbnewekhzzqgkae.supabase.co";
+
+// Keep your actual existing public anon/publishable key here.
 const SUPABASE_ANON_KEY = "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
 
 const $ = id => document.getElementById(id);
 const ready = !SUPABASE_URL.startsWith("PASTE_") &&
               !SUPABASE_ANON_KEY.startsWith("PASTE_");
-const db = ready ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const db = ready && window.supabase
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 let products = [];
 
@@ -48,6 +53,7 @@ $("login-form").addEventListener("submit", async e => {
 });
 
 $("logout").onclick = async () => {
+  if (!db) return;
   await db.auth.signOut();
   await session();
 };
@@ -88,7 +94,8 @@ $("product-form").addEventListener("submit", async e => {
       return;
     }
 
-    p.image_url = db.storage.from("product-images").getPublicUrl(path).data.publicUrl;
+    p.image_url =
+      db.storage.from("product-images").getPublicUrl(path).data.publicUrl;
   }
 
   const r = id
@@ -115,7 +122,7 @@ function clearForm() {
 
 async function session() {
   if (!db) {
-    msg("Setup required: configure Supabase public key.");
+    msg("Setup required: configure your existing public Supabase key.");
     return;
   }
 
@@ -158,6 +165,7 @@ async function load() {
 
   if (p.error || o.error) {
     msg("Cannot load data. Check admin access and SQL policies.");
+    console.error(p.error || o.error);
     return;
   }
 
@@ -179,27 +187,54 @@ async function load() {
 
   $("order-rows").innerHTML = (o.data || []).map(x => {
     const items = Array.isArray(x.items)
-      ? x.items.map(i => `${esc(i.name)} × ${i.quantity} (₹${cash(i.price)})`).join("<br>")
+      ? x.items.map(i =>
+          `${esc(i.name)} × ${i.quantity} (₹${cash(i.price)})`
+        ).join("<br>")
       : "";
 
-    const opts = ["New", "Confirmed", "Preparing", "Shipped", "Delivered", "Cancelled"]
-      .map(s => `<option ${x.status === s ? "selected" : ""}>${s}</option>`).join("");
+    const orderStatuses = [
+      "New", "Confirmed", "Preparing", "Shipped", "Delivered", "Cancelled"
+    ];
+    const paymentStatuses = ["Pending", "Paid", "Failed", "Refunded"];
+
+    const orderOptions = orderStatuses.map(s =>
+      `<option value="${s}" ${x.status === s ? "selected" : ""}>${s}</option>`
+    ).join("");
+
+    const paymentValue = paymentStatuses.includes(x.payment_status)
+      ? x.payment_status
+      : "Pending";
+
+    const paymentOptions = paymentStatuses.map(s =>
+      `<option value="${s}" ${paymentValue === s ? "selected" : ""}>${s}</option>`
+    ).join("");
 
     return `<tr>
-      <td>${esc(String(x.id).slice(0, 8))}<br>
+      <td>
+        ${esc(String(x.id).slice(0, 8))}<br>
         <span class="muted">${esc(new Date(x.created_at).toLocaleString())}</span>
       </td>
-      <td><b>${esc(x.customer_name)}</b><br>${esc(x.customer_phone)}<br>
-        ${esc(x.delivery_address)}<br>${esc(x.customer_note || "")}
+      <td>
+        <b>${esc(x.customer_name)}</b><br>
+        ${esc(x.customer_phone)}<br>
+        ${esc(x.delivery_address)}<br>
+        ${esc(x.customer_note || "")}
       </td>
       <td>${items}</td>
       <td>₹${cash(x.total)}</td>
-      <td>${esc(x.status)}</td>
-      <td><select id="s-${x.id}">${opts}</select>
-        <button class="btn alt" onclick="saveStatus('${x.id}')">Save</button>
+      <td>${esc(x.status || "New")}</td>
+      <td>
+        <select id="s-${x.id}">${orderOptions}</select>
+        <button class="btn alt" onclick="saveStatus('${x.id}')">Save Order</button>
+      </td>
+      <td>
+        <select id="pay-${x.id}">${paymentOptions}</select>
+      </td>
+      <td>
+        <button class="btn alt" onclick="savePaymentStatus('${x.id}')">Save Payment</button>
       </td>
     </tr>`;
-  }).join("") || "<tr><td colspan='6'>No orders yet.</td></tr>";
+  }).join("") || "<tr><td colspan='8'>No orders yet.</td></tr>";
 }
 
 /* Payment Settings */
@@ -281,7 +316,6 @@ $("payment-form")?.addEventListener("submit", async e => {
     return;
   }
 
-  // Update the existing row; don't allow a public insert through the frontend.
   const save = await db.from("store_settings").update({
     upi_id: upi,
     whatsapp_number: whatsapp,
@@ -302,7 +336,7 @@ $("payment-form")?.addEventListener("submit", async e => {
 });
 
 window.editProduct = id => {
-  const p = products.find(x => x.id === id);
+  const p = products.find(x => String(x.id) === String(id));
   if (!p) return;
   $("pid").value = p.id;
   $("pname").value = p.name;
@@ -318,7 +352,12 @@ window.editProduct = id => {
 
 window.toggleProduct = async (id, active) => {
   const r = await db.from("products").update({ active }).eq("id", id);
-  if (r.error) msg("Could not update product visibility.");
+  if (r.error) {
+    msg("Could not update product visibility.");
+    console.error(r.error);
+    return;
+  }
+  msg("Product visibility updated.");
   await load();
 };
 
@@ -329,6 +368,7 @@ window.saveStatus = async id => {
 
   if (r.error) {
     msg("Could not update order status.");
+    console.error(r.error);
     return;
   }
 
@@ -336,6 +376,30 @@ window.saveStatus = async id => {
   await load();
 };
 
+window.savePaymentStatus = async id => {
+  const status = $("pay-" + id).value;
+
+  if (status === "Paid") {
+    const confirmed = window.confirm(
+      "Have you verified the successful payment in your bank/UPI app? Only confirm Paid if the money was actually received."
+    );
+    if (!confirmed) return;
+  }
+
+  const r = await db.from("orders")
+    .update({ payment_status: status })
+    .eq("id", id);
+
+  if (r.error) {
+    msg("Could not update payment status. Check orders table permissions.");
+    console.error(r.error);
+    return;
+  }
+
+  msg("Payment status updated.");
+  await load();
+};
+
 if (db) db.auth.onAuthStateChange(() => setTimeout(session, 0));
 session();
-    
+     
