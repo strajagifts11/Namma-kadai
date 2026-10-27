@@ -4,7 +4,7 @@
 */
 const SUPABASE_URL = "https://bqrsavbnewekhzzqgkae.supabase.co";
 // IMPORTANT: replace "hide" below with your EXISTING working public anon/publishable key.
-const SUPABASE_ANON_KEY = "hide";
+const SUPABASE_ANON_KEY = "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
 const DEFAULT_WHATSAPP_NUMBER = "918489880411";
 const demo = [
   {id:"demo1",name:"Personalised Photo Frame",category:"Personalized gifts",price:499,mrp:null,description:"A keepsake for favourite memories",emoji:"🖼️"},
