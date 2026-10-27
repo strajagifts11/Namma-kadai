@@ -12,7 +12,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);font-family:'DM Sans',system-ui,sans-serif;color:var(--ink)}
 header{background:#fffdf9;padding:17px 6%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
-.brand{color:var(--ink);font:600 19px 'Playfair Display',Georgia,serif}
+.brand{color:var(--ink);font:600 19px 'Playfair Display',Georgia,serif;text-decoration:none}
 .wrap{max-width:1200px;margin:auto;padding:28px 5%}
 .wrap h1{font:500 38px 'Playfair Display',Georgia,serif}
 .panel{background:#fffdf9;border:1px solid var(--line);border-radius:0;padding:22px;margin:18px 0;box-shadow:0 8px 24px #3c2a1408}
@@ -33,7 +33,7 @@ th{background:#f3ecdf;font-size:10px;letter-spacing:.08em;text-transform:upperca
 #message{display:none;background:#f1e6d2;padding:13px;border:1px solid var(--line);font-size:12px}
 #message.show{display:block}
 h2{font:500 25px 'Playfair Display',Georgia,serif}
-@media(max-width:720px){.grid{grid-template-columns:1fr}.wrap{padding:16px 4%}.panel{padding:15px}header{padding:15px 4%}.wrap h1{font-size:32px}table{min-width:680px}}
+@media(max-width:720px){.grid{grid-template-columns:1fr}.wrap{padding:16px 4%}.panel{padding:15px}header{padding:15px 4%}.wrap h1{font-size:32px}table{min-width:900px}}
 </style>
 </head>
 <body>
@@ -112,57 +112,55 @@ h2{font:500 25px 'Playfair Display',Georgia,serif}
 
 <section class="panel">
 <h2>Customer orders</h2>
-<p class="muted">Order details are visible only to approved admin accounts.</p>
+<p class="muted">Order status tracks fulfilment. Payment status tracks whether payment has been verified in your bank/UPI app.</p>
 <div class="tablewrap">
 <table>
-<thead><tr><th>Order/date</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Save</th></tr></thead>
+<thead>
+<tr>
+<th>Order/date</th><th>Customer</th><th>Items</th><th>Total</th>
+<th>Order Status</th><th>Save Order</th>
+<th>Payment Status</th><th>Save Payment</th>
+</tr>
+</thead>
 <tbody id="order-rows"></tbody>
 </table>
 </div>
 </section>
 
-<!-- Payment Settings at the bottom -->
 <section class="panel" id="payment-settings">
 <h2>Payment Settings</h2>
 <p class="muted">Manage your UPI payment details and WhatsApp payment confirmation.</p>
-
 <form id="payment-form">
 <div class="field">
 <label for="payment-upi">UPI ID</label>
 <input id="payment-upi" type="text" placeholder="yourname@upi" maxlength="120" required>
 </div>
-
 <div class="field">
 <label for="payment-whatsapp">WhatsApp Number</label>
 <input id="payment-whatsapp" type="tel" placeholder="91XXXXXXXXXX" maxlength="15" required>
 </div>
-
 <div class="field">
 <label for="payment-qr-file">Upload UPI QR Code</label>
 <input id="payment-qr-file" type="file" accept="image/png,image/jpeg,image/webp">
 <small class="muted">JPG, PNG or WebP; maximum 5 MB.</small>
 </div>
-
 <div class="field">
 <label for="payment-qr-url">Existing QR Image URL</label>
 <input id="payment-qr-url" type="url" placeholder="https://...">
 <small class="muted">Optional. Upload a new QR or use an existing public image URL.</small>
 </div>
-
 <div id="payment-qr-preview" class="field hidden">
 <label>Current QR Preview</label>
 <img id="payment-qr-image" alt="Current UPI QR code" style="max-width:220px;width:100%;height:auto">
 </div>
-
 <button class="btn" type="submit">Save Payment Settings</button>
 </form>
 </section>
-
 </section>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="admin.js"></script>
 </body>
-  </html>
-  
+                                             </html>
+                                       
