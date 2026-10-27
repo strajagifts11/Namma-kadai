@@ -7,13 +7,13 @@
 */
 
 const SUPABASE_URL = "https://bqrsavbnewekhzzqgkae.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR_EXISTING_PUBLIC_ANON_KEY";
+const SUPABASE_ANON_KEY = "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
 
 const $ = id => document.getElementById(id);
 const ready =
   !!SUPABASE_URL &&
   !!SUPABASE_ANON_KEY &&
-  SUPABASE_ANON_KEY !== "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
+  SUPABASE_ANON_KEY !== "YOUR_EXISTING_PUBLIC_ANON_KEY";
 
 const db = ready && window.supabase
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -598,4 +598,4 @@ if (db) {
   db.auth.onAuthStateChange(() => setTimeout(session, 0));
 }
 session();
-   
+          
