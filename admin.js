@@ -1,29 +1,37 @@
 
 /* ST Raja Gifts Admin
-   Preserves products, orders, payment status and settings.
-   MRP + automatic discount added.
+   Products + MRP + discount + coupons + orders
+   + payment status + UPI QR settings.
+   Use your existing public Supabase anon/publishable key.
+   NEVER use service_role in browser code.
 */
-const SUPABASE_URL = "https://bqrsavbnewekhzzqgkae.supabase.co";
 
-// Keep your existing working public anon/publishable key.
-const SUPABASE_ANON_KEY = "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
+const SUPABASE_URL = "https://bqrsavbnewekhzzqgkae.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR_EXISTING_PUBLIC_ANON_KEY";
 
 const $ = id => document.getElementById(id);
-const ready = !SUPABASE_URL.startsWith("PASTE_") &&
-              !SUPABASE_ANON_KEY.startsWith("PASTE_") &&
-              SUPABASE_ANON_KEY !== "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
+const ready =
+  !!SUPABASE_URL &&
+  !!SUPABASE_ANON_KEY &&
+  SUPABASE_ANON_KEY !== "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
 
 const db = ready && window.supabase
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
 let products = [];
+let coupons = [];
 
 function msg(s) {
+  if (!$("message")) {
+    alert(s);
+    return;
+  }
   $("message").textContent = s;
   $("message").classList.add("show");
 }
 function clearMsg() {
+  if (!$("message")) return;
   $("message").classList.remove("show");
   $("message").textContent = "";
 }
@@ -44,32 +52,40 @@ function discountPercent(price, mrp) {
   return Math.round(((mrp - price) / mrp) * 100);
 }
 
-$("login-form").addEventListener("submit", async e => {
+/* LOGIN */
+$("login-form")?.addEventListener("submit", async e => {
   e.preventDefault();
+
   if (!db) {
-    msg("Keep your existing public Supabase key in admin.js.");
+    msg("Set your existing public Supabase key in admin.js.");
     return;
   }
+
   const r = await db.auth.signInWithPassword({
     email: $("email").value.trim(),
     password: $("password").value
   });
+
   if (r.error) {
     msg("Sign-in failed. Check credentials and admin approval.");
+    console.error(r.error);
     return;
   }
   await session();
 });
 
-$("logout").onclick = async () => {
-  if (!db) return;
-  await db.auth.signOut();
-  await session();
-};
-$("refresh").onclick = load;
-$("clear").onclick = clearForm;
+if ($("logout")) {
+  $("logout").onclick = async () => {
+    if (!db) return;
+    await db.auth.signOut();
+    await session();
+  };
+}
+if ($("refresh")) $("refresh").onclick = load;
+if ($("clear")) $("clear").onclick = clearForm;
 
-$("product-form").addEventListener("submit", async e => {
+/* PRODUCTS: SAVE + MRP */
+$("product-form")?.addEventListener("submit", async e => {
   e.preventDefault();
   if (!db) return;
 
@@ -83,7 +99,7 @@ $("product-form").addEventListener("submit", async e => {
     return;
   }
   if (mrp !== null &&
-      (!Number.isFinite(mrp) || mrp < price || mrp <= 0)) {
+      (!Number.isFinite(mrp) || mrp <= 0 || mrp < price)) {
     msg("MRP must be greater than or equal to selling price.");
     return;
   }
@@ -138,6 +154,7 @@ $("product-form").addEventListener("submit", async e => {
 });
 
 function clearForm() {
+  if (!$("product-form")) return;
   $("pid").value = "";
   $("product-form").reset();
   if ($("pmrp")) $("pmrp").value = "";
@@ -145,19 +162,20 @@ function clearForm() {
   $("form-title").textContent = "Add product";
 }
 
+/* AUTH SESSION + ADMIN CHECK */
 async function session() {
   if (!db) {
-    msg("Setup required: preserve your existing public Supabase key.");
+    msg("Setup required: add your existing public Supabase key.");
     return;
   }
 
   const r = await db.auth.getSession();
-  const s = r.data.session;
+  const s = r.data?.session;
 
-  $("login-panel").classList.toggle("hidden", !!s);
-  $("dashboard").classList.add("hidden");
-  $("logout").classList.toggle("hidden", !s);
-  $("signed-user").textContent = s?.user?.email || "";
+  $("login-panel")?.classList.toggle("hidden", !!s);
+  $("dashboard")?.classList.add("hidden");
+  $("logout")?.classList.toggle("hidden", !s);
+  if ($("signed-user")) $("signed-user").textContent = s?.user?.email || "";
 
   if (!s) return;
 
@@ -169,17 +187,20 @@ async function session() {
   if (a.error || !a.data) {
     msg("Not approved as admin. Check admin_users.");
     await db.auth.signOut();
-    $("login-panel").classList.remove("hidden");
-    $("logout").classList.add("hidden");
+    $("login-panel")?.classList.remove("hidden");
+    $("logout")?.classList.add("hidden");
     return;
   }
 
   clearMsg();
-  $("dashboard").classList.remove("hidden");
+  $("dashboard")?.classList.remove("hidden");
+
   await load();
   await loadPaymentSettings();
+  await loadCoupons(); // COUPONS LOAD AFTER ADMIN LOGIN
 }
 
+/* PRODUCTS + ORDERS */
 async function load() {
   if (!db) return;
 
@@ -196,73 +217,76 @@ async function load() {
 
   products = p.data || [];
 
-  $("product-rows").innerHTML = products.map(x => {
-    const mrp = Number(x.mrp || 0);
-    const price = Number(x.price || 0);
-    const off = discountPercent(price, mrp);
+  if ($("product-rows")) {
+    $("product-rows").innerHTML = products.map(x => {
+      const mrp = Number(x.mrp || 0);
+      const price = Number(x.price || 0);
+      const off = discountPercent(price, mrp);
 
-    return `<tr>
-      <td><b>${esc(x.name)}</b><br>${esc(x.category)}</td>
-      <td>₹${cash(price)}</td>
-      <td>${mrp > 0 ? "₹" + cash(mrp) : "—"}</td>
-      <td>${off > 0 ? off + "% OFF" : "—"}</td>
-      <td>${x.active ? "Yes" : "No"}</td>
-      <td>
-        <button class="btn alt" onclick="editProduct('${x.id}')">Edit</button>
-        <button class="btn alt" onclick="toggleProduct('${x.id}',${!x.active})">
-          ${x.active ? "Hide" : "Show"}
-        </button>
-      </td>
-    </tr>`;
-  }).join("") || "<tr><td colspan='6'>No products yet.</td></tr>";
+      return `<tr>
+        <td><b>${esc(x.name)}</b><br>${esc(x.category)}</td>
+        <td>₹${cash(price)}</td>
+        <td>${mrp > 0 ? "₹" + cash(mrp) : "—"}</td>
+        <td>${off > 0 ? off + "% OFF" : "—"}</td>
+        <td>${x.active ? "Yes" : "No"}</td>
+        <td>
+          <button class="btn alt" onclick="editProduct('${x.id}')">Edit</button>
+          <button class="btn alt" onclick="toggleProduct('${x.id}',${!x.active})">
+            ${x.active ? "Hide" : "Show"}
+          </button>
+        </td>
+      </tr>`;
+    }).join("") || "<tr><td colspan='6'>No products yet.</td></tr>";
+  }
 
-  $("order-rows").innerHTML = (o.data || []).map(x => {
-    const items = Array.isArray(x.items)
-      ? x.items.map(i =>
-          `${esc(i.name)} × ${i.quantity} (₹${cash(i.price)})`
-        ).join("<br>")
-      : "";
+  if ($("order-rows")) {
+    $("order-rows").innerHTML = (o.data || []).map(x => {
+      const items = Array.isArray(x.items)
+        ? x.items.map(i =>
+            `${esc(i.name)} × ${i.quantity} (₹${cash(i.price)})`
+          ).join("<br>")
+        : "";
 
-    const orderStatuses = [
-      "New", "Confirmed", "Preparing", "Shipped", "Delivered", "Cancelled"
-    ];
-    const paymentStatuses = ["Pending", "Paid", "Failed", "Refunded"];
+      const orderStatuses = [
+        "New", "Confirmed", "Preparing", "Shipped", "Delivered", "Cancelled"
+      ];
+      const paymentStatuses = ["Pending", "Paid", "Failed", "Refunded"];
 
-    const orderOptions = orderStatuses.map(s =>
-      `<option value="${s}" ${x.status === s ? "selected" : ""}>${s}</option>`
-    ).join("");
+      const orderOptions = orderStatuses.map(s =>
+        `<option value="${s}" ${x.status === s ? "selected" : ""}>${s}</option>`
+      ).join("");
 
-    const paymentValue = paymentStatuses.includes(x.payment_status)
-      ? x.payment_status
-      : "Pending";
+      const paymentValue = paymentStatuses.includes(x.payment_status)
+        ? x.payment_status : "Pending";
 
-    const paymentOptions = paymentStatuses.map(s =>
-      `<option value="${s}" ${paymentValue === s ? "selected" : ""}>${s}</option>`
-    ).join("");
+      const paymentOptions = paymentStatuses.map(s =>
+        `<option value="${s}" ${paymentValue === s ? "selected" : ""}>${s}</option>`
+      ).join("");
 
-    return `<tr>
-      <td>${esc(String(x.id).slice(0, 8))}<br>
-        <span class="muted">${esc(new Date(x.created_at).toLocaleString())}</span>
-      </td>
-      <td><b>${esc(x.customer_name)}</b><br>
-        ${esc(x.customer_phone)}<br>
-        ${esc(x.delivery_address)}<br>
-        ${esc(x.customer_note || "")}
-      </td>
-      <td>${items}</td>
-      <td>₹${cash(x.total)}</td>
-      <td>${esc(x.status || "New")}</td>
-      <td>
-        <select id="s-${x.id}">${orderOptions}</select>
-        <button class="btn alt" onclick="saveStatus('${x.id}')">Save Order</button>
-      </td>
-      <td><select id="pay-${x.id}">${paymentOptions}</select></td>
-      <td><button class="btn alt" onclick="savePaymentStatus('${x.id}')">Save Payment</button></td>
-    </tr>`;
-  }).join("") || "<tr><td colspan='8'>No orders yet.</td></tr>";
+      return `<tr>
+        <td>${esc(String(x.id).slice(0, 8))}<br>
+          <span class="muted">${esc(new Date(x.created_at).toLocaleString())}</span>
+        </td>
+        <td><b>${esc(x.customer_name)}</b><br>
+          ${esc(x.customer_phone)}<br>
+          ${esc(x.delivery_address)}<br>
+          ${esc(x.customer_note || "")}
+        </td>
+        <td>${items}</td>
+        <td>₹${cash(x.total)}</td>
+        <td>${esc(x.status || "New")}</td>
+        <td>
+          <select id="s-${x.id}">${orderOptions}</select>
+          <button class="btn alt" onclick="saveStatus('${x.id}')">Save Order</button>
+        </td>
+        <td><select id="pay-${x.id}">${paymentOptions}</select></td>
+        <td><button class="btn alt" onclick="savePaymentStatus('${x.id}')">Save Payment</button></td>
+      </tr>`;
+    }).join("") || "<tr><td colspan='8'>No orders yet.</td></tr>";
+  }
 }
 
-/* Payment Settings */
+/* PAYMENT SETTINGS */
 async function loadPaymentSettings() {
   if (!db || !$("payment-form")) return;
 
@@ -282,15 +306,12 @@ async function loadPaymentSettings() {
   $("payment-whatsapp").value = s.whatsapp_number || "";
   $("payment-qr-url").value = s.qr_image_url || "";
 
-  const preview = $("payment-qr-preview");
-  const image = $("payment-qr-image");
-
   if (s.qr_image_url) {
-    image.src = s.qr_image_url;
-    preview.classList.remove("hidden");
+    $("payment-qr-image").src = s.qr_image_url;
+    $("payment-qr-preview").classList.remove("hidden");
   } else {
-    image.removeAttribute("src");
-    preview.classList.add("hidden");
+    $("payment-qr-image").removeAttribute("src");
+    $("payment-qr-preview").classList.add("hidden");
   }
 }
 
@@ -327,11 +348,10 @@ $("payment-form")?.addEventListener("submit", async e => {
     });
 
     if (up.error) {
-      msg("QR upload failed. Check Storage upload permissions.");
+      msg("QR upload failed. Check Storage permissions.");
       console.error(up.error);
       return;
     }
-
     qrUrl = db.storage.from("product-images").getPublicUrl(path).data.publicUrl;
   }
 
@@ -359,6 +379,7 @@ $("payment-form")?.addEventListener("submit", async e => {
   await loadPaymentSettings();
 });
 
+/* PRODUCT ACTIONS */
 window.editProduct = id => {
   const p = products.find(x => String(x.id) === String(id));
   if (!p) return;
@@ -387,10 +408,11 @@ window.toggleProduct = async (id, active) => {
   await load();
 };
 
+/* ORDER + PAYMENT STATUS */
 window.saveStatus = async id => {
-  const r = await db.from("orders").update({
-    status: $("s-" + id).value
-  }).eq("id", id);
+  const r = await db.from("orders")
+    .update({ status: $("s-" + id).value })
+    .eq("id", id);
 
   if (r.error) {
     msg("Could not update order status.");
@@ -421,31 +443,9 @@ window.savePaymentStatus = async id => {
   await load();
 };
 
-if (db) db.auth.onAuthStateChange(() => setTimeout(session, 0));
-session(
-   
-);
-  
-/* ST Raja Gifts — Coupon Admin Integration
-   Requires the coupon form IDs already present in admin.html.
-   Uses the existing authenticated Supabase client: db.
-*/
-
-let coupons = [];
-
-function couponMsg(message) {
-  if (typeof msg === "function") msg(message);
-  else alert(message);
-}
-
-function couponDiscountLabel(c) {
-  const value = Number(c.discount_value || 0);
-  return c.discount_type === "percentage"
-    ? `${value}%`
-    : `₹${value}`;
-}
-
+/* COUPON MANAGEMENT */
 function clearCouponForm() {
+  if (!$("coupon-form")) return;
   $("coupon-id").value = "";
   $("coupon-form").reset();
   $("coupon-type").value = "flat";
@@ -456,58 +456,44 @@ function clearCouponForm() {
 async function loadCoupons() {
   if (!db || !$("coupon-rows")) return;
 
-  const { data, error } = await db
-    .from("coupons")
+  const { data, error } = await db.from("coupons")
     .select("*")
     .order("created_at", { ascending: false });
 
   if (error) {
-    couponMsg(
-      "Coupons load aagala. Check Supabase admin policy."
-    );
-    console.error("Coupon load error:", error);
+    msg("Coupons load failed. Check coupon table and admin policy.");
+    console.error("Coupon load:", error);
     return;
   }
 
   coupons = data || [];
 
   $("coupon-rows").innerHTML = coupons.map(c => {
-    const expiry = c.expires_at || "No expiry";
     const active = !!c.active;
+    const discount = c.discount_type === "percentage"
+      ? `${cash(c.discount_value)}%`
+      : `₹${cash(c.discount_value)}`;
 
-    return `
-      <tr>
-        <td>
-          <b>${esc(c.code)}</b><br>
-          <small>${esc(c.discount_type)}</small>
-        </td>
-        <td>${esc(couponDiscountLabel(c))}</td>
-        <td>₹${cash(c.minimum_order)}</td>
-        <td>${c.maximum_discount == null
-          ? "No limit"
-          : "₹" + cash(c.maximum_discount)}</td>
-        <td>${esc(expiry)}</td>
-        <td>${active ? "Active" : "Inactive"}</td>
-        <td>
-          <button class="btn alt"
-            onclick="editCoupon(${Number(c.id)})">Edit</button>
-          <button class="btn alt"
-            onclick="toggleCoupon(${Number(c.id)},${!active})">
-            ${active ? "Disable" : "Enable"}
-          </button>
-        </td>
-      </tr>
-    `;
-  }).join("") ||
-    "<tr><td colspan='7'>No coupons created yet.</td></tr>";
+    return `<tr>
+      <td><b>${esc(c.code)}</b><br>${esc(c.discount_type)}</td>
+      <td>${discount}</td>
+      <td>₹${cash(c.minimum_order)}</td>
+      <td>${c.maximum_discount == null ? "No limit" : "₹" + cash(c.maximum_discount)}</td>
+      <td>${esc(c.expires_at || "No expiry")}</td>
+      <td>${active ? "Active" : "Inactive"}</td>
+      <td>
+        <button class="btn alt" onclick="editCoupon(${Number(c.id)})">Edit</button>
+        <button class="btn alt" onclick="toggleCoupon(${Number(c.id)},${!active})">
+          ${active ? "Disable" : "Enable"}
+        </button>
+      </td>
+    </tr>`;
+  }).join("") || "<tr><td colspan='7'>No coupons created yet.</td></tr>";
 }
 
 $("coupon-form")?.addEventListener("submit", async e => {
   e.preventDefault();
-  if (!db) {
-    couponMsg("Supabase connection unavailable.");
-    return;
-  }
+  if (!db) return;
 
   const id = $("coupon-id").value;
   const code = $("coupon-code").value.trim().toUpperCase();
@@ -518,35 +504,27 @@ $("coupon-form")?.addEventListener("submit", async e => {
   const expiry = $("coupon-expiry").value || null;
 
   if (!/^[A-Z0-9_-]{3,30}$/.test(code)) {
-    couponMsg(
-      "Coupon code 3–30 characters: letters, numbers, _ or -."
-    );
+    msg("Coupon code must be 3–30 letters, numbers, _ or -.");
     return;
   }
-
   if (!["flat", "percentage"].includes(type)) {
-    couponMsg("Choose flat or percentage discount.");
+    msg("Choose flat or percentage.");
     return;
   }
-
   if (!Number.isFinite(value) || value <= 0 ||
       (type === "percentage" && value > 100)) {
-    couponMsg("Enter a valid discount value. Percentage max is 100.");
+    msg("Enter a valid discount. Percentage maximum is 100.");
     return;
   }
-
   if (!Number.isFinite(minimum) || minimum < 0) {
-    couponMsg("Minimum order cannot be negative.");
+    msg("Minimum order cannot be negative.");
     return;
   }
 
-  const maximum = maximumText === ""
-    ? null
-    : Number(maximumText);
-
+  const maximum = maximumText === "" ? null : Number(maximumText);
   if (maximum !== null &&
       (!Number.isFinite(maximum) || maximum <= 0)) {
-    couponMsg("Maximum discount must be greater than zero.");
+    msg("Maximum discount must be greater than zero.");
     return;
   }
 
@@ -565,17 +543,15 @@ $("coupon-form")?.addEventListener("submit", async e => {
     : await db.from("coupons").insert(payload);
 
   if (result.error) {
-    couponMsg(
-      result.error.code === "23505"
-        ? "Indha coupon code already exists."
-        : "Coupon save failed. Check admin policy and field values."
-    );
-    console.error("Coupon save error:", result.error);
+    msg(result.error.code === "23505"
+      ? "Coupon code already exists."
+      : "Coupon save failed. Check admin permissions.");
+    console.error("Coupon save:", result.error);
     return;
   }
 
   clearCouponForm();
-  couponMsg("Coupon saved successfully.");
+  msg("Coupon saved.");
   await loadCoupons();
 });
 
@@ -592,27 +568,23 @@ window.editCoupon = id => {
   $("coupon-expiry").value = c.expires_at || "";
   $("coupon-active").checked = !!c.active;
 
-  $("coupon-form").scrollIntoView({
-    behavior: "smooth",
-    block: "start"
-  });
+  $("coupon-form").scrollIntoView({ behavior: "smooth", block: "start" });
 };
 
 window.toggleCoupon = async (id, active) => {
   if (!db) return;
 
-  const { error } = await db
-    .from("coupons")
+  const { error } = await db.from("coupons")
     .update({ active })
     .eq("id", id);
 
   if (error) {
-    couponMsg("Coupon status update failed.");
-    console.error("Coupon toggle error:", error);
+    msg("Coupon status update failed.");
+    console.error(error);
     return;
   }
 
-  couponMsg(active ? "Coupon enabled." : "Coupon disabled.");
+  msg(active ? "Coupon enabled." : "Coupon disabled.");
   await loadCoupons();
 };
 
@@ -621,6 +593,9 @@ $("coupon-clear")?.addEventListener("click", e => {
   clearCouponForm();
 });
 
-/* Call this after a successful admin login/session check. */
-window.loadCoupons = loadCoupons;
-
+/* START */
+if (db) {
+  db.auth.onAuthStateChange(() => setTimeout(session, 0));
+}
+session();
+   
