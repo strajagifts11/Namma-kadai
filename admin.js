@@ -6,7 +6,7 @@
 const SUPABASE_URL = "https://bqrsavbnewekhzzqgkae.supabase.co";
 
 // Keep your existing working public anon/publishable key.
-const SUPABASE_ANON_KEY = "YOUR_EXISTING_PUBLIC_ANON_KEY";
+const SUPABASE_ANON_KEY = "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
 
 const $ = id => document.getElementById(id);
 const ready = !SUPABASE_URL.startsWith("PASTE_") &&
