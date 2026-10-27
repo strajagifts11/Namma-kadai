@@ -1,17 +1,18 @@
 
 /* ST Raja Gifts Admin
-   Existing products, orders and payment settings preserved.
-   Use ONLY your existing public Supabase anon/publishable key.
-   NEVER use a service_role key in browser code.
+   Preserves products, orders, payment status and settings.
+   MRP + automatic discount added.
 */
 const SUPABASE_URL = "https://bqrsavbnewekhzzqgkae.supabase.co";
 
-// Keep your actual existing public anon/publishable key here.
-const SUPABASE_ANON_KEY = "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
+// Keep your existing working public anon/publishable key.
+const SUPABASE_ANON_KEY = "YOUR_EXISTING_PUBLIC_ANON_KEY";
 
 const $ = id => document.getElementById(id);
 const ready = !SUPABASE_URL.startsWith("PASTE_") &&
-              !SUPABASE_ANON_KEY.startsWith("PASTE_");
+              !SUPABASE_ANON_KEY.startsWith("PASTE_") &&
+              SUPABASE_ANON_KEY !== "sb_publishable_5Crk8oH9IMCAAyILA2b8jQ_RscWPJcK";
+
 const db = ready && window.supabase
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
@@ -32,13 +33,21 @@ function esc(s) {
   }[c]));
 }
 function cash(n) {
-  return Number(n || 0).toLocaleString("en-IN");
+  return Number(n || 0).toLocaleString("en-IN", {
+    maximumFractionDigits: 2
+  });
+}
+function discountPercent(price, mrp) {
+  price = Number(price);
+  mrp = Number(mrp);
+  if (!mrp || mrp <= price || price < 0) return 0;
+  return Math.round(((mrp - price) / mrp) * 100);
 }
 
 $("login-form").addEventListener("submit", async e => {
   e.preventDefault();
   if (!db) {
-    msg("Add your existing public Supabase anon key in admin.js.");
+    msg("Keep your existing public Supabase key in admin.js.");
     return;
   }
   const r = await db.auth.signInWithPassword({
@@ -65,10 +74,25 @@ $("product-form").addEventListener("submit", async e => {
   if (!db) return;
 
   const id = $("pid").value;
+  const price = Number($("pprice").value);
+  const mrpInput = $("pmrp")?.value.trim() ?? "";
+  const mrp = mrpInput === "" ? null : Number(mrpInput);
+
+  if (!Number.isFinite(price) || price < 0) {
+    msg("Enter a valid selling price.");
+    return;
+  }
+  if (mrp !== null &&
+      (!Number.isFinite(mrp) || mrp < price || mrp <= 0)) {
+    msg("MRP must be greater than or equal to selling price.");
+    return;
+  }
+
   const p = {
     name: $("pname").value.trim(),
     category: $("pcat").value,
-    price: Number($("pprice").value),
+    price,
+    mrp,
     description: $("pdesc").value.trim(),
     image_url: $("pimage").value.trim() || null,
     active: $("pactive").checked
@@ -103,7 +127,7 @@ $("product-form").addEventListener("submit", async e => {
     : await db.from("products").insert(p);
 
   if (r.error) {
-    msg("Product save failed. Check database permissions.");
+    msg("Product save failed. Check database permissions and mrp column.");
     console.error(r.error);
     return;
   }
@@ -116,13 +140,14 @@ $("product-form").addEventListener("submit", async e => {
 function clearForm() {
   $("pid").value = "";
   $("product-form").reset();
+  if ($("pmrp")) $("pmrp").value = "";
   $("pactive").checked = true;
   $("form-title").textContent = "Add product";
 }
 
 async function session() {
   if (!db) {
-    msg("Setup required: configure your existing public Supabase key.");
+    msg("Setup required: preserve your existing public Supabase key.");
     return;
   }
 
@@ -171,10 +196,16 @@ async function load() {
 
   products = p.data || [];
 
-  $("product-rows").innerHTML = products.map(x => `
-    <tr>
+  $("product-rows").innerHTML = products.map(x => {
+    const mrp = Number(x.mrp || 0);
+    const price = Number(x.price || 0);
+    const off = discountPercent(price, mrp);
+
+    return `<tr>
       <td><b>${esc(x.name)}</b><br>${esc(x.category)}</td>
-      <td>₹${cash(x.price)}</td>
+      <td>₹${cash(price)}</td>
+      <td>${mrp > 0 ? "₹" + cash(mrp) : "—"}</td>
+      <td>${off > 0 ? off + "% OFF" : "—"}</td>
       <td>${x.active ? "Yes" : "No"}</td>
       <td>
         <button class="btn alt" onclick="editProduct('${x.id}')">Edit</button>
@@ -182,8 +213,8 @@ async function load() {
           ${x.active ? "Hide" : "Show"}
         </button>
       </td>
-    </tr>
-  `).join("") || "<tr><td colspan='4'>No products yet.</td></tr>";
+    </tr>`;
+  }).join("") || "<tr><td colspan='6'>No products yet.</td></tr>";
 
   $("order-rows").innerHTML = (o.data || []).map(x => {
     const items = Array.isArray(x.items)
@@ -210,12 +241,10 @@ async function load() {
     ).join("");
 
     return `<tr>
-      <td>
-        ${esc(String(x.id).slice(0, 8))}<br>
+      <td>${esc(String(x.id).slice(0, 8))}<br>
         <span class="muted">${esc(new Date(x.created_at).toLocaleString())}</span>
       </td>
-      <td>
-        <b>${esc(x.customer_name)}</b><br>
+      <td><b>${esc(x.customer_name)}</b><br>
         ${esc(x.customer_phone)}<br>
         ${esc(x.delivery_address)}<br>
         ${esc(x.customer_note || "")}
@@ -227,12 +256,8 @@ async function load() {
         <select id="s-${x.id}">${orderOptions}</select>
         <button class="btn alt" onclick="saveStatus('${x.id}')">Save Order</button>
       </td>
-      <td>
-        <select id="pay-${x.id}">${paymentOptions}</select>
-      </td>
-      <td>
-        <button class="btn alt" onclick="savePaymentStatus('${x.id}')">Save Payment</button>
-      </td>
+      <td><select id="pay-${x.id}">${paymentOptions}</select></td>
+      <td><button class="btn alt" onclick="savePaymentStatus('${x.id}')">Save Payment</button></td>
     </tr>`;
   }).join("") || "<tr><td colspan='8'>No orders yet.</td></tr>";
 }
@@ -282,7 +307,6 @@ $("payment-form")?.addEventListener("submit", async e => {
     msg("Enter UPI ID and WhatsApp number.");
     return;
   }
-
   if (!/^[0-9]{10,15}$/.test(whatsapp)) {
     msg("Enter WhatsApp number with country code, digits only.");
     return;
@@ -324,7 +348,7 @@ $("payment-form")?.addEventListener("submit", async e => {
   }).eq("id", 1);
 
   if (save.error) {
-    msg("Settings save failed. Check admin UPDATE permission in Supabase.");
+    msg("Settings save failed. Check Supabase UPDATE permission.");
     console.error(save.error);
     return;
   }
@@ -338,10 +362,12 @@ $("payment-form")?.addEventListener("submit", async e => {
 window.editProduct = id => {
   const p = products.find(x => String(x.id) === String(id));
   if (!p) return;
+
   $("pid").value = p.id;
   $("pname").value = p.name;
   $("pcat").value = p.category;
   $("pprice").value = p.price;
+  if ($("pmrp")) $("pmrp").value = p.mrp ?? "";
   $("pdesc").value = p.description || "";
   $("pimage").value = p.image_url || "";
   $("pfile").value = "";
@@ -371,7 +397,6 @@ window.saveStatus = async id => {
     console.error(r.error);
     return;
   }
-
   msg("Order status updated.");
   await load();
 };
@@ -379,27 +404,23 @@ window.saveStatus = async id => {
 window.savePaymentStatus = async id => {
   const status = $("pay-" + id).value;
 
-  if (status === "Paid") {
-    const confirmed = window.confirm(
-      "Have you verified the successful payment in your bank/UPI app? Only confirm Paid if the money was actually received."
-    );
-    if (!confirmed) return;
-  }
+  if (status === "Paid" && !window.confirm(
+    "Have you verified the successful payment in your bank/UPI app?"
+  )) return;
 
   const r = await db.from("orders")
     .update({ payment_status: status })
     .eq("id", id);
 
   if (r.error) {
-    msg("Could not update payment status. Check orders table permissions.");
+    msg("Could not update payment status. Check orders permissions.");
     console.error(r.error);
     return;
   }
-
   msg("Payment status updated.");
   await load();
 };
 
 if (db) db.auth.onAuthStateChange(() => setTimeout(session, 0));
 session();
-     
+                                       
