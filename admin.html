@@ -62,7 +62,7 @@ h2{font:500 25px 'Playfair Display',Georgia,serif}
 <div class="row" style="justify-content:space-between">
 <div>
 <h1>Shop dashboard</h1>
-<p class="muted">Add products, change prices, hide items and manage orders.</p>
+<p class="muted">Manage products, MRP, discounts, coupons, orders and payments.</p>
 </div>
 <button id="refresh" class="btn alt">Refresh</button>
 </div>
@@ -83,12 +83,20 @@ h2{font:500 25px 'Playfair Display',Georgia,serif}
 <option>Return gifts</option>
 </select>
 </div>
-<div class="field"><label>Price ₹ *</label><input id="pprice" type="number" min="0" step=".01" required></div>
+<div class="field">
+<label>Selling Price ₹ *</label>
+<input id="pprice" type="number" min="0" step=".01" required>
+</div>
+<div class="field">
+<label for="pmrp">MRP ₹</label>
+<input id="pmrp" type="number" min="0" step=".01" placeholder="Example: 599">
+<small class="muted">Optional. Enter an MRP equal to or higher than the selling price.</small>
+</div>
 <div class="field"><label>Description</label><textarea id="pdesc" rows="2"></textarea></div>
 <div class="field">
 <label>Product photo</label>
 <input id="pfile" type="file" accept="image/png,image/jpeg,image/webp">
-<small class="muted">JPG, PNG or WebP. Upload your image to Supabase Storage or paste an image URL below.</small>
+<small class="muted">JPG, PNG or WebP. Maximum 5 MB.</small>
 <input id="pimage" type="url" placeholder="Optional image URL">
 </div>
 <div class="field"><label><input id="pactive" type="checkbox" checked style="width:auto"> Visible to customers</label></div>
@@ -103,12 +111,70 @@ h2{font:500 25px 'Playfair Display',Georgia,serif}
 <h2>Products</h2>
 <div class="tablewrap">
 <table>
-<thead><tr><th>Product</th><th>Price</th><th>Visible</th><th>Action</th></tr></thead>
+<thead><tr><th>Product</th><th>Selling Price</th><th>MRP</th><th>Discount</th><th>Visible</th><th>Action</th></tr></thead>
 <tbody id="product-rows"></tbody>
 </table>
 </div>
 </section>
 </div>
+
+<!-- COUPON MANAGEMENT -->
+<section class="panel" id="coupon-management">
+<h2>Coupon Management</h2>
+<p class="muted">Create percentage or flat discounts for customers at checkout.</p>
+
+<form id="coupon-form">
+<input type="hidden" id="coupon-id">
+<div class="grid">
+<div class="field">
+<label for="coupon-code">Coupon Code *</label>
+<input id="coupon-code" type="text" placeholder="SAVE100" maxlength="40" required>
+</div>
+<div class="field">
+<label for="coupon-type">Discount Type *</label>
+<select id="coupon-type" required>
+<option value="flat">Flat Amount (₹)</option>
+<option value="percentage">Percentage (%)</option>
+</select>
+</div>
+<div class="field">
+<label for="coupon-value">Discount Value *</label>
+<input id="coupon-value" type="number" min="0.01" step="0.01" placeholder="100" required>
+</div>
+<div class="field">
+<label for="coupon-minimum">Minimum Order Amount (₹)</label>
+<input id="coupon-minimum" type="number" min="0" step="0.01" value="0">
+</div>
+<div class="field">
+<label for="coupon-maximum">Maximum Discount (₹, optional)</label>
+<input id="coupon-maximum" type="number" min="0" step="0.01" placeholder="Example: 200">
+</div>
+<div class="field">
+<label for="coupon-expiry">Expiry Date (optional)</label>
+<input id="coupon-expiry" type="date">
+</div>
+</div>
+<div class="field">
+<label><input id="coupon-active" type="checkbox" checked style="width:auto"> Coupon Active</label>
+</div>
+<div class="row">
+<button class="btn" type="submit">Save Coupon</button>
+<button class="btn alt" type="button" id="coupon-clear">Clear</button>
+</div>
+</form>
+
+<h2 style="margin-top:30px">Existing Coupons</h2>
+<div class="tablewrap">
+<table>
+<thead>
+<tr><th>Code</th><th>Discount</th><th>Minimum Order</th><th>Expiry</th><th>Status</th><th>Actions</th></tr>
+</thead>
+<tbody id="coupon-rows">
+<tr><td colspan="6">Coupon integration pending.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
 
 <section class="panel">
 <h2>Customer orders</h2>
@@ -162,5 +228,5 @@ h2{font:500 25px 'Playfair Display',Georgia,serif}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="admin.js"></script>
 </body>
-                                             </html>
-                                       
+  </html>
+  
