@@ -1,7 +1,6 @@
 
-/* ST Raja Gifts - Storefront + Coupon Checkout
-   Keeps products, cart, MRP discounts, orders, UPI and WhatsApp.
-   Supabase coupons table uses the `code` column.
+/* ST Raja Gifts — Final app.js
+   Products, MRP, cart, coupons, orders, UPI and WhatsApp
 */
 
 const SUPABASE_URL = "https://bqrsavbnewekhzzqgkae.supabase.co";
@@ -16,14 +15,7 @@ const demo = [
   {id:"demo5",name:"Return Gift Set",category:"Return gifts",price:299,mrp:null,description:"A thank-you for guests",emoji:"🎉"}
 ];
 
-const cats = [
-  "All gifts",
-  "Personalized gifts",
-  "Gift hampers",
-  "Soft toys",
-  "Watches & accessories",
-  "Return gifts"
-];
+const cats = ["All gifts","Personalized gifts","Gift hampers","Soft toys","Watches & accessories","Return gifts"];
 
 let db = null;
 let products = [];
@@ -42,52 +34,39 @@ const $ = id => document.getElementById(id);
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
   }[c]));
 }
 
 function cash(n) {
-  return Number(n || 0).toLocaleString("en-IN", {
-    maximumFractionDigits: 2
-  });
+  return Number(n || 0).toLocaleString("en-IN", {maximumFractionDigits:2});
 }
 
 function subtotal() {
-  return cart.reduce(
-    (sum, p) => sum + Number(p.price) * p.qty,
-    0
-  );
+  return cart.reduce((sum,p) => sum + Number(p.price)*p.qty, 0);
 }
 
 function finalTotal() {
-  return Math.max(0, subtotal() - couponDiscount);
+  return Math.max(0, subtotal()-couponDiscount);
 }
 
-function discountPercent(price, mrp) {
+function discountPercent(price,mrp) {
   price = Number(price);
   mrp = Number(mrp);
-
   if (!mrp || mrp <= price || price < 0) return 0;
-
-  return Math.round(((mrp - price) / mrp) * 100);
+  return Math.round(((mrp-price)/mrp)*100);
 }
 
 function showNotice(message) {
   const n = $("notice");
-
   if (n) {
     n.textContent = message;
     n.classList.add("show");
   }
 }
 
-function couponMessage(message, good = false) {
+function couponMessage(message,good=false) {
   const el = $("coupon-message");
-
   if (el) {
     el.textContent = message;
     el.style.color = good ? "#16875b" : "#817667";
@@ -98,65 +77,75 @@ async function loadPaymentSettings() {
   if (!db) return;
 
   try {
-    const r = await db
-      .from("store_settings")
+    const r = await db.from("store_settings")
       .select("upi_id,whatsapp_number,qr_image_url")
-      .eq("id", 1)
+      .eq("id",1)
       .maybeSingle();
 
     if (r.error) {
-      console.error("Payment settings error:", r.error);
+      console.error("Payment settings error:",r.error);
       return;
     }
 
     if (r.data) {
       paymentSettings = {
-        upi_id: r.data.upi_id || "",
-        whatsapp_number: String(
-          r.data.whatsapp_number || DEFAULT_WHATSAPP_NUMBER
-        ).replace(/\D/g, ""),
-        qr_image_url: r.data.qr_image_url || ""
+        upi_id:r.data.upi_id || "",
+        whatsapp_number:String(r.data.whatsapp_number || DEFAULT_WHATSAPP_NUMBER).replace(/\D/g,""),
+        qr_image_url:r.data.qr_image_url || ""
       };
     }
   } catch (e) {
-    console.error("Payment settings error:", e);
+    console.error("Payment settings error:",e);
   }
 }
 
+/* LIVE PRODUCT LOADING — show real error instead of silently showing demo items */
 async function load() {
-  if (db) {
-    const r = await db
-      .from("products")
-      .select("id,name,category,price,mrp,description,image_url,active")
-      .eq("active", true)
-      .order("created_at", { ascending: false });
-
-    if (!r.error && r.data) {
-      products = r.data;
-    } else {
-      console.error("Product loading error:", r.error);
-      products = demo;
-      showNotice("Live catalogue unavailable; demo products shown.");
-    }
-  } else {
-    products = demo;
-    showNotice(
-      "Preview mode only. Check your Supabase public key to enable live orders."
-    );
+  if (!db) {
+    products = [];
+    renderCats();
+    renderProducts();
+    showNotice("Supabase client not initialized. Check the public key and Supabase JS script in index.html.");
+    return;
   }
 
-  renderCats();
-  renderProducts();
+  try {
+    const r = await db.from("products")
+      .select("id,name,category,price,mrp,description,image_url,active")
+      .eq("active",true)
+      .order("created_at",{ascending:false});
+
+    if (r.error) {
+      console.error("Product loading error:",r.error);
+      products = [];
+      renderCats();
+      renderProducts();
+      showNotice("Supabase product error: " + r.error.message);
+      return;
+    }
+
+    products = r.data || [];
+    renderCats();
+    renderProducts();
+
+    if (!products.length) {
+      showNotice("No active products found. Check the active column in Supabase.");
+    }
+  } catch (e) {
+    console.error("Product loading exception:",e);
+    products = [];
+    renderCats();
+    renderProducts();
+    showNotice("Could not load products: " + (e.message || "Unknown error"));
+  }
 }
 
 function renderCats() {
   if (!$("categories")) return;
 
   $("categories").innerHTML = cats.map(c => `
-    <button class="chip ${c === category ? "active" : ""}"
-      onclick="setCat('${c.replace(/'/g, "\\'")}')">
-      ${esc(c)}
-    </button>
+    <button class="chip ${c===category?"active":""}"
+      onclick="setCat('${c.replace(/'/g,"\\'")}')">${esc(c)}</button>
   `).join("");
 }
 
@@ -169,48 +158,35 @@ function setCat(c) {
 function renderProducts() {
   if (!$("products")) return;
 
-  const search = ($("gift-search")?.value || "")
-    .trim()
-    .toLowerCase();
+  const search = ($("gift-search")?.value || "").trim().toLowerCase();
 
   const list = products.filter(p =>
-    (category === "All gifts" || p.category === category) &&
-    (!search || [p.name, p.category, p.description].some(v =>
-      String(v || "").toLowerCase().includes(search)
+    (category==="All gifts" || p.category===category) &&
+    (!search || [p.name,p.category,p.description].some(v =>
+      String(v||"").toLowerCase().includes(search)
     ))
   );
 
   $("products").innerHTML = list.length
     ? list.map(p => {
-        const off = discountPercent(p.price, p.mrp);
+        const off = discountPercent(p.price,p.mrp);
 
         return `
           <article class="card">
-            ${
-              p.image_url
-                ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}">`
-                : `<div class="emoji">${esc(p.emoji || "🎁")}</div>`
+            ${p.image_url
+              ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}">`
+              : `<div class="emoji">${esc(p.emoji||"🎁")}</div>`
             }
-
             <div class="info">
               <h3>${esc(p.name)}</h3>
               <div class="price">₹${cash(p.price)}</div>
-
-              ${
-                Number(p.mrp) > Number(p.price)
-                  ? `<div class="mrp-line">
-                       <del>₹${cash(p.mrp)}</del>
-                       <span>${off}% OFF</span>
-                     </div>`
-                  : ""
+              ${Number(p.mrp)>Number(p.price)
+                ? `<div class="mrp-line"><del>₹${cash(p.mrp)}</del><span>${off}% OFF</span></div>`
+                : ""
               }
-
-              <p>${esc(p.description || p.category)}</p>
-
+              <p>${esc(p.description||p.category)}</p>
               <div class="product-actions">
-                <button class="btn" onclick="add('${esc(p.id)}')">
-                  Add to basket
-                </button>
+                <button class="btn" onclick="add('${esc(p.id)}')">Add to basket</button>
               </div>
             </div>
           </article>
@@ -219,47 +195,31 @@ function renderProducts() {
     : `<div class="empty-search">No gifts found. Try another search or category.</div>`;
 
   const count = $("result-count");
-
-  if (count) {
-    count.textContent =
-      `${list.length} gift${list.length === 1 ? "" : "s"} found`;
-  }
+  if (count) count.textContent = `${list.length} gift${list.length===1?"":"s"} found`;
 }
 
 function add(id) {
-  const p = products.find(x => String(x.id) === String(id));
-
+  const p = products.find(x => String(x.id)===String(id));
   if (!p) return;
 
-  const item = cart.find(x => String(x.id) === String(id));
-
-  if (item) {
-    item.qty++;
-  } else {
-    cart.push({ ...p, qty: 1 });
-  }
+  const item = cart.find(x => String(x.id)===String(id));
+  if (item) item.qty++;
+  else cart.push({...p,qty:1});
 
   renderCart();
-  $("checkout")?.scrollIntoView({ behavior: "smooth" });
+  $("checkout")?.scrollIntoView({behavior:"smooth"});
 }
 
-function qty(id, d) {
-  const item = cart.find(x => String(x.id) === String(id));
-
+function qty(id,d) {
+  const item = cart.find(x => String(x.id)===String(id));
   if (!item) return;
 
   item.qty += d;
-
-  if (item.qty < 1) {
-    cart = cart.filter(x => String(x.id) !== String(id));
-  }
+  if (item.qty<1) cart = cart.filter(x => String(x.id)!==String(id));
 
   if (!cart.length) {
     clearCoupon(false);
-  } else if (
-    appliedCoupon &&
-    subtotal() < Number(appliedCoupon.minimum_order || 0)
-  ) {
+  } else if (appliedCoupon && subtotal()<Number(appliedCoupon.minimum_order||0)) {
     clearCoupon(false);
     couponMessage("Coupon removed because the basket is below its minimum order value.");
   }
@@ -267,139 +227,96 @@ function qty(id, d) {
   renderCart();
 }
 
-function clearCoupon(clearInput = true) {
+function clearCoupon(clearInput=true) {
   appliedCoupon = null;
   couponDiscount = 0;
 
-  if (clearInput && $("coupon-code")) {
-    $("coupon-code").value = "";
-  }
-
-  if ($("remove-coupon")) $("remove-coupon").hidden = true;
-  if ($("coupon-summary")) $("coupon-summary").hidden = true;
+  if (clearInput && $("coupon-code")) $("coupon-code").value="";
+  if ($("remove-coupon")) $("remove-coupon").hidden=true;
+  if ($("coupon-summary")) $("coupon-summary").hidden=true;
 }
 
-function calculateCoupon(coupon) {
+function calculateCoupon(c) {
   const sub = subtotal();
-  const min = Number(coupon.minimum_order || 0);
+  const min = Number(c.minimum_order||0);
 
-  if (sub < min) {
-    throw new Error(
-      `Minimum order for this coupon is ₹${cash(min)}.`
-    );
+  if (sub<min) throw new Error(`Minimum order for this coupon is ₹${cash(min)}.`);
+
+  const value = Number(c.discount_value||0);
+  let discount = String(c.discount_type||"").toLowerCase()==="percentage"
+    ? sub*Math.min(100,Math.max(0,value))/100
+    : Math.max(0,value);
+
+  if (c.maximum_discount!==null && c.maximum_discount!==undefined && c.maximum_discount!=="") {
+    discount = Math.min(discount,Math.max(0,Number(c.maximum_discount)));
   }
 
-  const value = Number(coupon.discount_value || 0);
-
-  let discount =
-    String(coupon.discount_type || "").toLowerCase() === "percentage"
-      ? sub * Math.min(100, Math.max(0, value)) / 100
-      : Math.max(0, value);
-
-  if (
-    coupon.maximum_discount !== null &&
-    coupon.maximum_discount !== undefined &&
-    coupon.maximum_discount !== ""
-  ) {
-    discount = Math.min(
-      discount,
-      Math.max(0, Number(coupon.maximum_discount))
-    );
-  }
-
-  return Math.min(
-    sub,
-    Math.max(0, Math.round((discount + Number.EPSILON) * 100) / 100)
-  );
+  return Math.min(sub,Math.max(0,Math.round((discount+Number.EPSILON)*100)/100));
 }
 
-/* COUPON APPLICATION — uses Supabase `code` column */
+/* COUPONS TABLE COLUMN: code */
 async function applyCoupon() {
   const input = $("coupon-code");
   const btn = $("apply-coupon");
-
-  const code = (input?.value || "").trim().toUpperCase();
+  const code = (input?.value||"").trim().toUpperCase();
 
   if (!cart.length) {
     couponMessage("Add a gift to your basket before applying a coupon.");
     return;
   }
-
   if (!code) {
     couponMessage("Enter a coupon code first.");
     return;
   }
-
   if (!db) {
-    couponMessage("Coupon checking is unavailable. Check your Supabase public key.");
+    couponMessage("Supabase is not connected. Check the public key.");
     return;
   }
 
   if (btn) {
-    btn.disabled = true;
-    btn.textContent = "CHECKING…";
+    btn.disabled=true;
+    btn.textContent="CHECKING…";
   }
 
   try {
-    const r = await db
-      .from("coupons")
+    const r = await db.from("coupons")
       .select("code,discount_type,discount_value,minimum_order,maximum_discount,expires_at,active")
-      .eq("code", code)
-      .eq("active", true)
+      .eq("code",code)
+      .eq("active",true)
       .maybeSingle();
 
     if (r.error) {
-      console.error("Coupon lookup failed:", r.error);
-
-      throw new Error(
-        "Could not check coupon. Check the coupons table read permission (RLS) in Supabase."
-      );
+      console.error("Coupon lookup error:",r.error);
+      throw new Error("Coupon lookup failed: " + r.error.message);
     }
 
-    if (!r.data) {
-      throw new Error("Invalid or inactive coupon code.");
-    }
+    if (!r.data) throw new Error("Invalid or inactive coupon code.");
 
     const c = r.data;
 
-    if (!c.active) {
-      throw new Error("This coupon is inactive.");
-    }
-
     if (c.expires_at) {
-      const today = new Date();
-      const todayISO =
-        `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-
-      if (String(c.expires_at).slice(0, 10) < todayISO) {
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+      if (String(c.expires_at).slice(0,10)<today) {
         throw new Error("This coupon has expired.");
       }
     }
 
     const disc = calculateCoupon(c);
-
-    // Keep compatibility with the existing order and WhatsApp code.
-    appliedCoupon = { ...c, coupon_code: c.code };
+    appliedCoupon = {...c,coupon_code:c.code};
     couponDiscount = disc;
 
     renderCart();
-
-    couponMessage(
-      `Coupon ${code} applied! You save ₹${cash(disc)}.`,
-      true
-    );
-
-    if ($("remove-coupon")) {
-      $("remove-coupon").hidden = false;
-    }
+    couponMessage(`Coupon ${code} applied! You save ₹${cash(disc)}.`,true);
+    if ($("remove-coupon")) $("remove-coupon").hidden=false;
   } catch (e) {
     clearCoupon(false);
     renderCart();
-    couponMessage(e.message || "Could not apply this coupon.");
+    couponMessage(e.message||"Could not apply this coupon.");
   } finally {
     if (btn) {
-      btn.disabled = false;
-      btn.textContent = "APPLY";
+      btn.disabled=false;
+      btn.textContent="APPLY";
     }
   }
 }
@@ -410,24 +327,18 @@ function renderCart() {
   $("cart-items").innerHTML = cart.length
     ? cart.map(p => `
         <div class="line">
-          <span>
-            ${esc(p.name)} × ${p.qty}<br>
-            <button type="button" class="chip"
-              onclick="qty('${esc(p.id)}',-1)">−</button>
-            <button type="button" class="chip"
-              onclick="qty('${esc(p.id)}',1)">+</button>
+          <span>${esc(p.name)} × ${p.qty}<br>
+            <button type="button" class="chip" onclick="qty('${esc(p.id)}',-1)">−</button>
+            <button type="button" class="chip" onclick="qty('${esc(p.id)}',1)">+</button>
           </span>
-          <b>₹${cash(Number(p.price) * p.qty)}</b>
+          <b>₹${cash(Number(p.price)*p.qty)}</b>
         </div>
       `).join("")
     : "Basket empty — add a gift above.";
 
   const sub = subtotal();
 
-  if (
-    appliedCoupon &&
-    sub < Number(appliedCoupon.minimum_order || 0)
-  ) {
+  if (appliedCoupon && sub<Number(appliedCoupon.minimum_order||0)) {
     clearCoupon(false);
     couponMessage("Coupon removed because the basket is below its minimum order value.");
   }
@@ -435,7 +346,7 @@ function renderCart() {
   if (appliedCoupon) {
     try {
       couponDiscount = calculateCoupon(appliedCoupon);
-    } catch (e) {
+    } catch {
       clearCoupon(false);
     }
   }
@@ -443,44 +354,29 @@ function renderCart() {
   $("cart-total").textContent = cash(finalTotal());
 
   if ($("coupon-summary")) {
-    $("coupon-summary").hidden = !appliedCoupon;
-
+    $("coupon-summary").hidden=!appliedCoupon;
     if (appliedCoupon) {
-      $("coupon-subtotal").textContent = cash(sub);
-      $("coupon-discount").textContent = cash(couponDiscount);
+      $("coupon-subtotal").textContent=cash(sub);
+      $("coupon-discount").textContent=cash(couponDiscount);
     }
   }
 
-  if ($("remove-coupon")) {
-    $("remove-coupon").hidden = !appliedCoupon;
-  }
+  if ($("remove-coupon")) $("remove-coupon").hidden=!appliedCoupon;
 }
 
-function buildPaymentPanel(orderId, total, payload, items, lines, subTotal, discount) {
+function buildPaymentPanel(orderId,total,payload,items,lines,subTotal,discount) {
   const out = $("order-result");
-
   if (!out) return;
 
   const upi = paymentSettings.upi_id.trim();
   const qr = paymentSettings.qr_image_url;
-  const wa = paymentSettings.whatsapp_number || DEFAULT_WHATSAPP_NUMBER;
+  const wa = paymentSettings.whatsapp_number||DEFAULT_WHATSAPP_NUMBER;
 
-  const upiLink = upi && total > 0
-    ? `upi://pay?pa=${encodeURIComponent(upi)}&pn=${encodeURIComponent("ST Raja Gifts")}&am=${encodeURIComponent(Number(total).toFixed(2))}&cu=INR&tn=${encodeURIComponent("Order " + orderId)}`
+  const upiLink = upi && total>0
+    ? `upi://pay?pa=${encodeURIComponent(upi)}&pn=${encodeURIComponent("ST Raja Gifts")}&am=${encodeURIComponent(Number(total).toFixed(2))}&cu=INR&tn=${encodeURIComponent("Order "+orderId)}`
     : "";
 
-  const message =
-    `Hi ST Raja Gifts! I placed order ${orderId}.\n\n` +
-    `${lines}\n\n` +
-    `Subtotal: ₹${cash(subTotal)}\n` +
-    `Coupon discount: ₹${cash(discount)}\n` +
-    `Estimated total: ₹${cash(total)}\n` +
-    `Coupon: ${payload.applied_coupon || "None"}\n` +
-    `Name: ${payload.customer_name}\n` +
-    `Phone: ${payload.customer_phone}\n` +
-    `Address: ${payload.delivery_address}\n` +
-    `Notes: ${payload.customer_note || "None"}\n\n` +
-    `Please confirm my order and delivery details.`;
+  const message = `Hi ST Raja Gifts! I placed order ${orderId}.\n\n${lines}\n\nSubtotal: ₹${cash(subTotal)}\nCoupon discount: ₹${cash(discount)}\nEstimated total: ₹${cash(total)}\nCoupon: ${payload.applied_coupon||"None"}\nName: ${payload.customer_name}\nPhone: ${payload.customer_phone}\nAddress: ${payload.delivery_address}\nNotes: ${payload.customer_note||"None"}\n\nPlease confirm my order and delivery details.`;
 
   const waUrl = `https://wa.me/${wa}?text=${encodeURIComponent(message)}`;
 
@@ -491,210 +387,159 @@ function buildPaymentPanel(orderId, total, payload, items, lines, subTotal, disc
       <p>Subtotal: <b>₹${cash(subTotal)}</b></p>
       <p>Coupon discount: <b>− ₹${cash(discount)}</b></p>
       <p>Final estimated amount: <b>₹${cash(total)}</b></p>
-
-      ${
-        total > 0
-          ? `
-            <h3 style="font-family:Georgia,serif">Complete your UPI payment</h3>
-            ${
-              qr
-                ? `<div style="text-align:center;margin:15px 0">
-                     <img src="${esc(qr)}" alt="ST Raja Gifts UPI payment QR code"
-                       style="display:block;width:min(260px,100%);height:auto;margin:auto;border:1px solid #e9dfce;padding:8px;background:#fff"
-                       loading="lazy">
-                   </div>`
-                : `<p>QR image is not configured yet. Contact the shop on WhatsApp.</p>`
-            }
-            ${
-              upi
-                ? `<p>UPI ID: <b>${esc(upi)}</b></p>
-                   <button type="button" class="btn btn-outline" id="copy-upi">COPY UPI ID</button>
-                   <p style="margin-top:12px">
-                     <a class="btn btn-gold" href="${esc(upiLink)}">PAY ₹${cash(total)} USING UPI</a>
-                   </p>`
-                : `<p>UPI ID is not configured. Please contact the shop.</p>`
-            }
-          `
-          : `<p style="color:#16875b;font-weight:700">No payment is due for this order total. Please contact the shop to confirm.</p>`
-      }
-
-      <p style="font-size:12px;line-height:1.7;color:#817667">
-        Payment is not verified automatically. Your order remains subject to shop confirmation.
-      </p>
-
-      <a class="btn" target="_blank" rel="noopener" href="${esc(waUrl)}">
-        SEND ORDER DETAILS ON WHATSAPP
-      </a>
+      ${total>0 ? `
+        <h3 style="font-family:Georgia,serif">Complete your UPI payment</h3>
+        ${qr ? `<div style="text-align:center;margin:15px 0"><img src="${esc(qr)}" alt="ST Raja Gifts UPI payment QR code" style="display:block;width:min(260px,100%);height:auto;margin:auto;border:1px solid #e9dfce;padding:8px;background:#fff" loading="lazy"></div>` : `<p>QR image is not configured yet. Contact the shop on WhatsApp.</p>`}
+        ${upi ? `<p>UPI ID: <b>${esc(upi)}</b></p><button type="button" class="btn btn-outline" id="copy-upi">COPY UPI ID</button><p style="margin-top:12px"><a class="btn btn-gold" href="${esc(upiLink)}">PAY ₹${cash(total)} USING UPI</a></p>` : `<p>UPI ID is not configured. Please contact the shop.</p>`}
+      ` : `<p style="color:#16875b;font-weight:700">No payment is due for this order total. Please contact the shop to confirm.</p>`}
+      <p style="font-size:12px;line-height:1.7;color:#817667">Payment is not verified automatically. Your order remains subject to shop confirmation.</p>
+      <a class="btn" target="_blank" rel="noopener" href="${esc(waUrl)}">SEND ORDER DETAILS ON WHATSAPP</a>
     </div>
   `;
 
   const cp = $("copy-upi");
-
   if (cp) {
-    cp.addEventListener("click", async () => {
+    cp.addEventListener("click",async () => {
       try {
         await navigator.clipboard.writeText(upi);
-        cp.textContent = "UPI ID COPIED";
+        cp.textContent="UPI ID COPIED";
       } catch {
-        window.prompt("Copy this UPI ID:", upi);
+        window.prompt("Copy this UPI ID:",upi);
       }
     });
   }
 }
 
-$("apply-coupon")?.addEventListener("click", applyCoupon);
+$("apply-coupon")?.addEventListener("click",applyCoupon);
 
-$("coupon-code")?.addEventListener("keydown", e => {
-  if (e.key === "Enter") {
+$("coupon-code")?.addEventListener("keydown",e => {
+  if (e.key==="Enter") {
     e.preventDefault();
     applyCoupon();
   }
 });
 
-$("remove-coupon")?.addEventListener("click", () => {
+$("remove-coupon")?.addEventListener("click",() => {
   clearCoupon();
   renderCart();
   couponMessage("Coupon removed.");
 });
 
-$("order-form")?.addEventListener("submit", async e => {
+$("order-form")?.addEventListener("submit",async e => {
   e.preventDefault();
 
   const out = $("order-result");
-
   if (!out) return;
 
   if (!cart.length) {
-    out.textContent = "Add a product to your basket first.";
+    out.textContent="Add a product to your basket first.";
     return;
   }
-
   if (!db) {
-    out.textContent = "Preview only: check your Supabase public key and connection before accepting real orders.";
+    out.textContent="Supabase is not connected. Check the public key before accepting orders.";
     return;
   }
 
   const subTotal = subtotal();
 
-  if (
-    appliedCoupon &&
-    subTotal < Number(appliedCoupon.minimum_order || 0)
-  ) {
+  if (appliedCoupon && subTotal<Number(appliedCoupon.minimum_order||0)) {
     clearCoupon();
     renderCart();
-    out.textContent = "Coupon removed because the basket is below its minimum order value.";
+    out.textContent="Coupon removed because the basket is below its minimum order value.";
     return;
   }
 
-  const discount = appliedCoupon
-    ? calculateCoupon(appliedCoupon)
-    : 0;
-
-  const total = Math.max(
-    0,
-    Math.round((subTotal - discount + Number.EPSILON) * 100) / 100
-  );
+  const discount = appliedCoupon ? calculateCoupon(appliedCoupon) : 0;
+  const total = Math.max(0,Math.round((subTotal-discount+Number.EPSILON)*100)/100);
 
   const items = cart.map(p => ({
-    product_id: String(p.id).startsWith("demo") ? null : p.id,
-    name: p.name,
-    price: Number(p.price),
-    quantity: p.qty
+    product_id:String(p.id).startsWith("demo") ? null : p.id,
+    name:p.name,
+    price:Number(p.price),
+    quantity:p.qty
   }));
 
   const note = $("customer-note").value.trim();
 
   const payload = {
-    customer_name: $("customer-name").value.trim(),
-    customer_phone: $("customer-phone").value.trim(),
-    delivery_address: $("customer-address").value.trim(),
-    customer_note: (
-      note +
-      (
-        appliedCoupon
-          ? `${note ? "\n" : ""}Coupon: ${appliedCoupon.code}; subtotal ₹${cash(subTotal)}; discount ₹${cash(discount)}`
-          : ""
-      )
-    ).slice(0, 500),
+    customer_name:$("customer-name").value.trim(),
+    customer_phone:$("customer-phone").value.trim(),
+    delivery_address:$("customer-address").value.trim(),
+    customer_note:(note+(appliedCoupon ? `${note?"\n":""}Coupon: ${appliedCoupon.code}; subtotal ₹${cash(subTotal)}; discount ₹${cash(discount)}` : "")).slice(0,500),
     items,
     total,
-    status: "New"
+    status:"New"
   };
 
-  if (appliedCoupon) {
-    payload.applied_coupon = appliedCoupon.code;
-  }
-
   const button = $("place-order");
-
   if (button) {
-    button.disabled = true;
-    button.textContent = "SAVING ORDER…";
+    button.disabled=true;
+    button.textContent="SAVING ORDER…";
   }
 
-  out.textContent = "";
+  out.textContent="";
 
   try {
-    // Keep the existing orders-table column structure unchanged.
-    const insertPayload = { ...payload };
-    delete insertPayload.applied_coupon;
-
-    const r = await db
-      .from("orders")
-      .insert(insertPayload)
+    const r = await db.from("orders")
+      .insert(payload)
       .select("id")
       .single();
 
     if (r.error) {
-      console.error("Order save failed:", r.error);
-      out.textContent = "Could not save the order. Please contact the shop on WhatsApp.";
+      console.error("Order save failed:",r.error);
+      out.textContent="Could not save the order: "+r.error.message;
       return;
     }
 
-    const orderId = r.data.id;
-
     const lines = cart.map(p =>
-      `• ${p.name} × ${p.qty} — ₹${cash(Number(p.price) * p.qty)}`
+      `• ${p.name} × ${p.qty} — ₹${cash(Number(p.price)*p.qty)}`
     ).join("\n");
 
     await loadPaymentSettings();
 
-    buildPaymentPanel(
-      orderId,
-      total,
-      payload,
-      items,
-      lines,
-      subTotal,
-      discount
-    );
+    buildPaymentPanel(r.data.id,total,{
+      ...payload,
+      applied_coupon:appliedCoupon ? appliedCoupon.code : ""
+    },items,lines,subTotal,discount);
 
-    cart = [];
+    cart=[];
     clearCoupon();
     renderCart();
     $("order-form").reset();
     couponMessage("Have a coupon? Apply it here.");
   } catch (error) {
-    console.error("Checkout error:", error);
-    out.textContent = "Something went wrong. Please try again or contact the shop.";
+    console.error("Checkout error:",error);
+    out.textContent="Something went wrong: "+(error.message||"Please try again.");
   } finally {
     if (button) {
-      button.disabled = false;
-      button.textContent = "PLACE ORDER REQUEST";
+      button.disabled=false;
+      button.textContent="PLACE ORDER REQUEST";
     }
   }
 });
 
-$("gift-search")?.addEventListener("input", renderProducts);
+$("gift-search")?.addEventListener("input",renderProducts);
 
 async function initStorefront() {
-  await Promise.all([
-    load(),
-    loadPaymentSettings()
-  ]);
+  if (SUPABASE_ANON_KEY==="YOUR_EXISTING_PUBLIC_ANON_KEY" || !SUPABASE_ANON_KEY) {
+    showNotice("Add your existing Supabase public key in app.js.");
+    return;
+  }
 
-  renderCart();
+  if (!window.supabase) {
+    showNotice("Supabase JS library did not load. Check index.html.");
+    return;
+  }
+
+  try {
+    db = window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+    await Promise.all([load(),loadPaymentSettings()]);
+    renderCart();
+  } catch (e) {
+    console.error("Storefront initialization error:",e);
+    showNotice("Storefront error: "+(e.message||"Could not initialize Supabase."));
+  }
 }
 
 initStorefront();
-   
+         
